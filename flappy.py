@@ -2,6 +2,7 @@ from itertools import cycle
 import random
 import sys
 import pygame
+from collections import defaultdict
 from pygame.locals import *
 
 FPS = 30
@@ -54,8 +55,10 @@ except NameError:
 
 
 def main():
-    global SCREEN, FPSCLOCK
-    pygame.init()
+    global SCREEN, FPSCLOCK, SOUNDS
+    # pygame.init()
+    pygame.display.init()
+    pygame.font.init()
     FPSCLOCK = pygame.time.Clock()
     SCREEN = pygame.display.set_mode((SCREENWIDTH, SCREENHEIGHT))
     pygame.display.set_caption('Flappy Bird')
@@ -82,16 +85,22 @@ def main():
     IMAGES['base'] = pygame.image.load('assets/sprites/base.png').convert_alpha()
 
     # sounds
-    if 'win' in sys.platform:
-        soundExt = '.wav'
-    else:
-        soundExt = '.ogg'
+    # if 'win' in sys.platform:
+    #     soundExt = '.wav'
+    # else:
+    #     soundExt = '.ogg'
 
-    SOUNDS['die']    = pygame.mixer.Sound('assets/audio/die' + soundExt)
-    SOUNDS['hit']    = pygame.mixer.Sound('assets/audio/hit' + soundExt)
-    SOUNDS['point']  = pygame.mixer.Sound('assets/audio/point' + soundExt)
-    SOUNDS['swoosh'] = pygame.mixer.Sound('assets/audio/swoosh' + soundExt)
-    SOUNDS['wing']   = pygame.mixer.Sound('assets/audio/wing' + soundExt)
+    class DummySoundObject:
+        def play(self):
+            pass
+
+    SOUNDS = defaultdict(DummySoundObject)
+
+    # SOUNDS['die']    = pygame.mixer.Sound('assets/audio/die' + soundExt)
+    # SOUNDS['hit']    = pygame.mixer.Sound('assets/audio/hit' + soundExt)
+    # SOUNDS['point']  = pygame.mixer.Sound('assets/audio/point' + soundExt)
+    # SOUNDS['swoosh'] = pygame.mixer.Sound('assets/audio/swoosh' + soundExt)
+    # SOUNDS['wing']   = pygame.mixer.Sound('assets/audio/wing' + soundExt)
 
     while True:
         # select random background sprites
@@ -234,13 +243,6 @@ class Flappy:
 
 
     def step(self, action: bool):
-        # while True:
-        # for event in pygame.event.get():
-        #     if event.type == QUIT or (event.type == KEYDOWN and event.key == K_ESCAPE):
-        #         pygame.quit()
-        #         sys.exit()
-        #     if event.type == KEYDOWN and (event.key == K_SPACE or event.key == K_UP):
-
         if action:
             if self.playery > -2 * IMAGES['player'][0].get_height():
                 self.playerVelY = self.playerFlapAcc
@@ -328,7 +330,8 @@ class Flappy:
         SCREEN.blit(playerSurface, (self.playerx, self.playery))
 
         pygame.display.update()
-        FPSCLOCK.tick(FPS)
+        # FPSCLOCK.tick(FPS)
+        FPSCLOCK.tick()
         x3 = pygame.surfarray.pixels3d(SCREEN)
         x3_copy = x3.copy()
         del x3
