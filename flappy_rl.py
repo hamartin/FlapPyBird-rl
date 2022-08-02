@@ -9,6 +9,7 @@ import torch
 import math
 import os
 import argparse
+import datetime
 import subprocess
 from torch import nn, optim, distributions
 
@@ -76,7 +77,9 @@ def run(args):
     reward_baseline_decay = 0.05  # how fast to move baseline towards reward, see formula below
     reward_multiplier = 0.1
 
-    f_logfile = open(args.logfile.format(ref=args.ref), 'w')
+    log_filepath = args.logfile.format(ref=args.ref)
+    f_logfile = open(log_filepath, 'w')
+    print('logging to', log_filepath)
 
     net = Net(
         input_channels=args.previous_frames + 1,
@@ -143,7 +146,6 @@ def run(args):
             opt.step()
             opt.zero_grad()
             used_mem = get_mem()
-            print('used_mem', used_mem, 'MB')
             b = episode // args.grad_accum_steps
             batch_loss = batch_loss_sum / args.grad_accum_steps
             batch_reward = batch_reward_sum / args.grad_accum_steps
@@ -159,14 +161,19 @@ def run(args):
                 'reward': batch_reward,
                 'used_mem': used_mem,
                 'normalized_reward': normalized_reward,
-                'reward_baseline': reward_baseline
+                'reward_baseline': reward_baseline,
+                'datetime': datetime.datetime.now().strftime('%Y-%m-%d %H:%M')
             }) + '\n')
             f_logfile.flush()
             batch_loss_sum = 0
             batch_reward_sum = 0
         if (episode % args.save_every) == 0:
             used_mem = get_mem()
+            print('used_mem', used_mem, 'MB')
             save_filepath = args.model_path_templ.format(episode=episode, ref=args.ref)
+            save_dir = os.path.dirname(save_filepath)
+            if not os.path.exists(save_dir):
+                os.makedirs(save_dir)
             torch.save(net, save_filepath)
             print(f'saved model to {save_filepath}')
 
@@ -191,12 +198,12 @@ if __name__ == '__main__':
         '--grad-accum-steps', type=int, default=16,
         help='how many episodes to accumulate gradients over before backprop')
     parser.add_argument('--lr', type=float, default=0.0001)
-    parser.add_argument('--logfile', type=str, default='tmp/log_{ref}.txt')
+    parser.add_argument('--logfile', type=str, default='pull/flappy_log_{ref}.txt')
     # parser.add_argument(
     #     '--ent-reg', type=float, default=0.001,
     #     help='higher numbers => more exploration; lower numbers => more exploitation')
-    parser.add_argument('--model-path-templ', type=str, default='tmp/model_{ref}_{episode}.pt')
-    parser.add_argument('--checkpoint-path', type=str, default='tmp/checkpoint_{ref}.pt')
+    parser.add_argument('--model-path-templ', type=str, default='pull/flappy_model_{ref}/{episode}.pt')
+    parser.add_argument('--checkpoint-path', type=str, default='tmp/flappy_checkpoint_{ref}.pt')
     parser.add_argument('--save-every', type=int, default=100)
     parser.add_argument('--ref', type=str, required=True)
     parser.add_argument('--bias-output', type=float, default=0.1, help='preset probability of jumping')
