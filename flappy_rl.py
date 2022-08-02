@@ -7,6 +7,7 @@ import json
 import os
 import torch.nn.functional as F
 import torch
+import math
 import argparse
 from torch import nn, optim, distributions
 
@@ -56,7 +57,8 @@ def run(args):
     image_width = flp.SCREENWIDTH // args.average_pool_size
     image_height = flp.SCREENHEIGHT // args.average_pool_size
 
-    reward_baseline = 5
+    reward_baseline = 0.0
+    reward_baseline_decay = 0.05  # how fast to move baseline towards reward, see formula below
     reward_multiplier = 0.1
 
     f_logfile = open(args.logfile, 'w')
@@ -65,6 +67,11 @@ def run(args):
         input_channels=args.previous_frames + 1,
         input_width=image_width,
         input_height=image_height)
+    if args.bias_output:
+        logit0 = 0
+        logit1 = logit0 + math.log(args.bias_output)
+        net.output.bias.data[0] = logit0
+        net.output.bias.data[1] = logit1
     opt = optim.RMSprop(lr=args.lr, params=net.parameters())
     batch_reward_sum = 0
     batch_loss_sum = 0
@@ -111,6 +118,7 @@ def run(args):
             screenbuf_t = torch.from_numpy(screenbuf)
         normalized_reward = (reward - reward_baseline) * reward_multiplier
         rl_loss = - m_log_prob_sum * normalized_reward
+        reward_baseline = reward_baseline_decay * (1 - reward_baseline_decay) + reward_baseline_decay * reward
         # entropy_loss = - args.ent_reg * episode_entropy
         loss = rl_loss
         batch_loss_sum += loss.item()
@@ -125,12 +133,14 @@ def run(args):
             batch_normalized_reward = (batch_reward - reward_baseline) * reward_multiplier
             print(
                 f'b={b} loss={batch_loss:.3f} reward={batch_reward:.3f}'
-                f' normalized_reward={batch_normalized_reward:.3f}')
+                f' normalized_reward={batch_normalized_reward:.3f}',
+                'reward_baseline %.3f' % reward_baseline)
             f_logfile.write(json.dumps({
                 'batch': b,
                 'loss': batch_loss,
                 'reward': batch_reward,
-                'normalized_reward': normalized_reward
+                'normalized_reward': normalized_reward,
+                'reward_baseline': reward_baseline
             }) + '\n')
             f_logfile.flush()
             batch_loss_sum = 0
@@ -139,10 +149,6 @@ def run(args):
             save_filepath = args.model_path_templ.format(episode=episode)
             torch.save(net, save_filepath)
             print(f'saved {save_filepath}')
-
-# log the batch reward
-# log the batch loss
-# and print these
 
 
 if __name__ == '__main__':
@@ -160,6 +166,7 @@ if __name__ == '__main__':
     #     '--ent-reg', type=float, default=0.001,
     #     help='higher numbers => more exploration; lower numbers => more exploitation')
     parser.add_argument('--model-path-templ', type=str, default='tmp/model_{episode}.pt')
-    parser.add_argument('--save-every', type=int, default=1000)
+    parser.add_argument('--save-every', type=int, default=100)
+    parser.add_argument('--bias-output', type=float, default=0.1, help='preset probability of jumping')
     args = parser.parse_args()
     run(args)
