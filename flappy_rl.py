@@ -169,7 +169,6 @@ def run(args):
             batch_reward_sum = 0
         if (episode % args.save_every) == 0:
             used_mem = get_mem()
-            print('used_mem', used_mem, 'MB')
             save_filepath = args.model_path_templ.format(episode=episode, ref=args.ref)
             save_dir = os.path.dirname(save_filepath)
             if not os.path.exists(save_dir):
@@ -204,7 +203,7 @@ if __name__ == '__main__':
     #     help='higher numbers => more exploration; lower numbers => more exploitation')
     parser.add_argument('--model-path-templ', type=str, default='pull/flappy_model_{ref}/{episode}.pt')
     parser.add_argument('--checkpoint-path', type=str, default='tmp/flappy_checkpoint_{ref}.pt')
-    parser.add_argument('--save-every', type=int, default=100)
+    parser.add_argument('--save-every', type=int, default=500)
     parser.add_argument('--ref', type=str, required=True)
     parser.add_argument('--bias-output', type=float, default=0.1, help='preset probability of jumping')
     args = parser.parse_args()
