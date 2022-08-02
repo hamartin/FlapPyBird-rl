@@ -33,7 +33,7 @@ def get_mem():
         output = subprocess.check_output('free -m'.split()).decode('utf-8')
         mem_row = output.split('\n')[1]
         used_mem = mem_row.split()[2]
-        return used_mem
+        return int(used_mem)
     return -1
 
 
@@ -68,7 +68,7 @@ class Net(nn.Module):
 
 def run(args):
     # os.environ["SDL_VIDEODRIVER"] = "dummy"
-    screen, movementInfo = flp.main()
+    screen, movementInfo = flp.main(visible=args.visible)
 
     image_width = flp.SCREENWIDTH // args.average_pool_size
     image_height = flp.SCREENHEIGHT // args.average_pool_size
@@ -78,6 +78,7 @@ def run(args):
     reward_multiplier = 0.1
 
     log_filepath = args.logfile.format(ref=args.ref)
+    assert not os.path.exists(log_filepath)
     f_logfile = open(log_filepath, 'w')
     print('logging to', log_filepath)
 
@@ -102,9 +103,12 @@ def run(args):
         for _ in range(args.previous_frames):
             frames_l.append(torch.zeros(image_width, image_height))
         m_log_prob_sum = 0.0
-        episode_entropy = 0
+        # episode_entropy = 0
         for step_num in itertools.count():
             screenbuf_t = (screenbuf_t / 255).mean(dim=-1)
+            if (step_num + 1) % 200 == 0:
+                print('episode', episode, 'step_num', step_num)
+                save_float_image(f'tmp/dump_{step_num}.png', screenbuf_t)
             screenbuf_t = screenbuf_t
             with torch.no_grad():
                 screenbuf_t = F.avg_pool2d(
@@ -134,6 +138,12 @@ def run(args):
                 reward = res['score']
                 break
             screenbuf_t = torch.from_numpy(screenbuf)
+        # used_mem = get_mem()
+        # print('used_mem', used_mem)
+        # if used_mem > 1000:
+        #     print('used_mem > 1000. odd...')
+        #     print('step_num', step_num)
+        #     print('len(frames_l)', len(frames_l))
         normalized_reward = (reward - reward_baseline) * reward_multiplier
         rl_loss = - m_log_prob_sum * normalized_reward
         reward_baseline = reward_baseline_decay * (1 - reward_baseline_decay) + reward_baseline_decay * reward
@@ -154,12 +164,13 @@ def run(args):
                 f'b={b} loss={batch_loss:.3f} reward={batch_reward:.3f}'
                 f' normalized_reward={batch_normalized_reward:.3f}',
                 'reward_baseline %.3f' % reward_baseline,
-                'used_mem', used_mem)
+                'used_mem', used_mem, 'step_num', step_num)
             f_logfile.write(json.dumps({
                 'batch': b,
                 'loss': batch_loss,
                 'reward': batch_reward,
                 'used_mem': used_mem,
+                'num_steps': step_num,
                 'normalized_reward': normalized_reward,
                 'reward_baseline': reward_baseline,
                 'datetime': datetime.datetime.now().strftime('%Y-%m-%d %H:%M')
@@ -190,6 +201,7 @@ def run(args):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--previous-frames', type=int, default=2)
+    parser.add_argument('--visible', action='store_true')
     parser.add_argument(
         '--average-pool-size', type=int, default=8,
         help='how much to shrink the input image')

@@ -54,13 +54,16 @@ except NameError:
     xrange = range
 
 
-def main():
+def main(visible: bool):
     global SCREEN, FPSCLOCK, SOUNDS
     # pygame.init()
     pygame.display.init()
     pygame.font.init()
     FPSCLOCK = pygame.time.Clock()
-    SCREEN = pygame.display.set_mode((SCREENWIDTH, SCREENHEIGHT))
+    if visible:
+        SCREEN = pygame.display.set_mode((SCREENWIDTH, SCREENHEIGHT))
+    else:
+        SCREEN = pygame.display.set_mode((SCREENWIDTH, SCREENHEIGHT), flags=pygame.HIDDEN)
     pygame.display.set_caption('Flappy Bird')
 
     # numbers sprites for score display
@@ -243,6 +246,10 @@ class Flappy:
 
 
     def step(self, action: bool):
+        for event in pygame.event.get():
+            # drain events, just in case there are any
+            print('event', event)
+
         if action:
             if self.playery > -2 * IMAGES['player'][0].get_height():
                 self.playerVelY = self.playerFlapAcc
