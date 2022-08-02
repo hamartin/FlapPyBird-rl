@@ -332,11 +332,8 @@ class Flappy:
         pygame.display.update()
         # FPSCLOCK.tick(FPS)
         FPSCLOCK.tick()
-        x3 = pygame.surfarray.pixels3d(SCREEN)
-        x3_copy = x3.copy()
-        del x3
-        # print('x3', x3)
-        return x3_copy, False, None
+        x3 = pygame.surfarray.array3d(SCREEN)
+        return x3, False, None
 
 
 def showGameOverScreen(crashInfo):
