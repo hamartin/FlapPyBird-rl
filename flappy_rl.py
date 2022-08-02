@@ -4,11 +4,12 @@ import torch
 from collections import deque
 from PIL import Image
 import json
-import os
 import torch.nn.functional as F
 import torch
 import math
+import os
 import argparse
+import subprocess
 from torch import nn, optim, distributions
 
 
@@ -19,6 +20,20 @@ def save_float_image(filepath: str, tensor: torch.Tensor):
     print('tensor.size()', tensor.size(), tensor.dtype)
     im = Image.fromarray(tensor.numpy())
     im.save(filepath)
+
+
+def get_mem():
+    """
+    use free -m to get memory usage (I dont have swap, on the instance)
+
+    if not on linux, just return 0, since not sure how to do this on mac
+    """
+    if os.path.exists('/usr/bin/free'):
+        output = subprocess.check_output('free -m'.split()).decode('utf-8')
+        mem_row = output.split('\n')[1]
+        used_mem = mem_row.split()[2]
+        return used_mem
+    return -1
 
 
 class Net(nn.Module):
@@ -61,7 +76,7 @@ def run(args):
     reward_baseline_decay = 0.05  # how fast to move baseline towards reward, see formula below
     reward_multiplier = 0.1
 
-    f_logfile = open(args.logfile, 'w')
+    f_logfile = open(args.logfile.format(ref=args.ref), 'w')
 
     net = Net(
         input_channels=args.previous_frames + 1,
@@ -124,9 +139,11 @@ def run(args):
         batch_loss_sum += loss.item()
         batch_reward_sum += reward
         loss.backward()
-        if (episode + 1) % args.grad_accum_steps == 0:
+        if ((episode + 1) % args.grad_accum_steps) == 0:
             opt.step()
             opt.zero_grad()
+            used_mem = get_mem()
+            print('used_mem', used_mem, 'MB')
             b = episode // args.grad_accum_steps
             batch_loss = batch_loss_sum / args.grad_accum_steps
             batch_reward = batch_reward_sum / args.grad_accum_steps
@@ -134,21 +151,34 @@ def run(args):
             print(
                 f'b={b} loss={batch_loss:.3f} reward={batch_reward:.3f}'
                 f' normalized_reward={batch_normalized_reward:.3f}',
-                'reward_baseline %.3f' % reward_baseline)
+                'reward_baseline %.3f' % reward_baseline,
+                'used_mem', used_mem)
             f_logfile.write(json.dumps({
                 'batch': b,
                 'loss': batch_loss,
                 'reward': batch_reward,
+                'used_mem': used_mem,
                 'normalized_reward': normalized_reward,
                 'reward_baseline': reward_baseline
             }) + '\n')
             f_logfile.flush()
             batch_loss_sum = 0
             batch_reward_sum = 0
-        if episode % args.save_every == 0:
-            save_filepath = args.model_path_templ.format(episode=episode)
+        if (episode % args.save_every) == 0:
+            used_mem = get_mem()
+            save_filepath = args.model_path_templ.format(episode=episode, ref=args.ref)
             torch.save(net, save_filepath)
-            print(f'saved {save_filepath}')
+            print(f'saved model to {save_filepath}')
+
+            save_filepath = args.checkpoint_path.format(ref=args.ref)
+            torch.save({
+                'opt': opt,
+                'net': net,
+                'episode': episode,
+                'mem': used_mem
+            }, save_filepath + '~')
+            os.rename(save_filepath + '~', save_filepath)
+            print(f'saved checkpoint to {save_filepath}')
 
 
 if __name__ == '__main__':
@@ -161,12 +191,14 @@ if __name__ == '__main__':
         '--grad-accum-steps', type=int, default=16,
         help='how many episodes to accumulate gradients over before backprop')
     parser.add_argument('--lr', type=float, default=0.0001)
-    parser.add_argument('--logfile', type=str, default='tmp/log.txt')
+    parser.add_argument('--logfile', type=str, default='tmp/log_{ref}.txt')
     # parser.add_argument(
     #     '--ent-reg', type=float, default=0.001,
     #     help='higher numbers => more exploration; lower numbers => more exploitation')
-    parser.add_argument('--model-path-templ', type=str, default='tmp/model_{episode}.pt')
+    parser.add_argument('--model-path-templ', type=str, default='tmp/model_{ref}_{episode}.pt')
+    parser.add_argument('--checkpoint-path', type=str, default='tmp/checkpoint_{ref}.pt')
     parser.add_argument('--save-every', type=int, default=100)
+    parser.add_argument('--ref', type=str, required=True)
     parser.add_argument('--bias-output', type=float, default=0.1, help='preset probability of jumping')
     args = parser.parse_args()
     run(args)
