@@ -9,6 +9,7 @@ import torch
 import math
 import os
 import argparse
+import gc
 import datetime
 import subprocess
 from torch import nn, optim, distributions
@@ -82,6 +83,9 @@ def run(args):
     f_logfile = open(log_filepath, 'w')
     print('logging to', log_filepath)
 
+    bug_logpath = args.buglog.format(ref=args.ref)
+    f_buglog = open(bug_logpath, 'w')
+
     net = Net(
         input_channels=args.previous_frames + 1,
         input_width=image_width,
@@ -104,11 +108,25 @@ def run(args):
             frames_l.append(torch.zeros(image_width, image_height))
         m_log_prob_sum = 0.0
         # episode_entropy = 0
+        abort = False
         for step_num in itertools.count():
             screenbuf_t = (screenbuf_t / 255).mean(dim=-1)
-            if (step_num + 1) % 200 == 0:
-                print('episode', episode, 'step_num', step_num)
-                save_float_image(f'tmp/dump_{step_num}.png', screenbuf_t)
+            if step_num > 5000:
+                # some bug, not sure what, but we will oom and the process will die if we keep going..
+                # (we can actually go up to step 23000, before dieing, with 16GB of memory available,
+                # but why spend all that time, when it's not doing anything useful anyway...)
+                m_log_prob_sum = 0.0
+                frames_l.clear()
+                gc.collect()
+                gc.collect()
+                f_buglog.write(f'bug step={step_num} episode={episode}\n')
+                f_buglog.flush()
+                save_float_image(f'tmp/dump_ref{args.ref}_episode{episode}_step{step_num}.png', screenbuf_t)
+                abort = True
+                break
+            # if (step_num + 1) % 200 == 0:
+            #     print('episode', episode, 'step_num', step_num)
+            #     save_float_image(f'tmp/dump_{step_num}.png', screenbuf_t)
             screenbuf_t = screenbuf_t
             with torch.no_grad():
                 screenbuf_t = F.avg_pool2d(
@@ -138,6 +156,9 @@ def run(args):
                 reward = res['score']
                 break
             screenbuf_t = torch.from_numpy(screenbuf)
+        if abort:
+            # some bug, we escaped the world somehow, or something, just skip
+            continue
         # used_mem = get_mem()
         # print('used_mem', used_mem)
         # if used_mem > 1000:
@@ -210,6 +231,7 @@ if __name__ == '__main__':
         help='how many episodes to accumulate gradients over before backprop')
     parser.add_argument('--lr', type=float, default=0.0001)
     parser.add_argument('--logfile', type=str, default='pull/flappy_log_{ref}.txt')
+    parser.add_argument('--buglog', type=str, default='pull/flappy_bugs_{ref}.txt')
     # parser.add_argument(
     #     '--ent-reg', type=float, default=0.001,
     #     help='higher numbers => more exploration; lower numbers => more exploitation')
