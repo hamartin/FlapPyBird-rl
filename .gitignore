@@ -1,1 +1,8 @@
+# Files
 *.pyc
+*.swp
+
+# Directories
+**old*
+**__pycache__*
+**venv*
